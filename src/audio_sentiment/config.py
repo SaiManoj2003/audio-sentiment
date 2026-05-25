@@ -21,7 +21,17 @@ class AudioConfig:
     n_fft: int = 2048
 
 @dataclass
+class ASRConfig:
+    """Whisper transcription settings."""
+    model_size: str = "medium"        # tiny | base | small | medium | large-v3
+    device: str = "cuda"              # cuda | cpu
+    compute_type: str = "float16"     # float16 for GPU, int8 for CPU
+    language: str = "en"
+    beam_size: int = 5
+
+@dataclass
 class Config:
+    asr: ASRConfig = field(default_factory=ASRConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
 
 # Single importable instance
