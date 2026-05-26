@@ -30,9 +30,17 @@ class ASRConfig:
     beam_size: int = 5
 
 @dataclass
+class TextEmotionConfig:
+    """Text emotion model settings."""
+    model_name: str = "j-hartmann/emotion-english-distilroberta-base"
+    device: str = "cuda"
+    max_length: int = 512
+
+@dataclass
 class Config:
     asr: ASRConfig = field(default_factory=ASRConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    text_emotion: TextEmotionConfig = field(default_factory=TextEmotionConfig)
 
 # Single importable instance
 cfg = Config()

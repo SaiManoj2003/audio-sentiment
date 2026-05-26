@@ -8,9 +8,7 @@ Speaker diarization note:
 faster-whisper does not natively support diarization — that requires
 pyannote.audio which needs a Hugging Face token and model agreement.
 For this project we use a simpler approach: we detect speaker turns
-via silence gaps between segments. This is honest to include in the
-README and still produces clean per-speaker sentence splits for
-2-speaker call recordings.
+via silence gaps between segments.
 """
 
 import logging
