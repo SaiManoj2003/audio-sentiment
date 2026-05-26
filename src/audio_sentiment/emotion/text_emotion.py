@@ -45,7 +45,7 @@ def _get_pipeline():
     pipe = hf_pipeline(
         task="text-classification",
         model=cfg.text_emotion.model_name,
-        top_k=None,           # return probabilities for ALL classes
+        top_k=None,
         device=0 if cfg.text_emotion.device == "cuda" else -1,
         truncation=True,
         max_length=cfg.text_emotion.max_length,
@@ -64,18 +64,6 @@ def classify_text_emotion(text: str) -> dict[str, float]:
     Returns:
         Dict mapping each emotion label to its probability.
         Probabilities sum to 1.0.
-
-    Example:
-        >>> classify_text_emotion("I am so frustrated with this service!")
-        {
-            'anger': 0.72,
-            'disgust': 0.10,
-            'fear': 0.04,
-            'joy': 0.02,
-            'neutral': 0.05,
-            'sadness': 0.05,
-            'surprise': 0.02
-        }
     """
     if not text or not text.strip():
         logger.warning("Empty text passed to classify_text_emotion — returning neutral.")
@@ -84,10 +72,8 @@ def classify_text_emotion(text: str) -> dict[str, float]:
     pipe = _get_pipeline()
     raw = pipe(text.strip())[0]  # list of {label, score} dicts
 
-    # Normalise label casing — model returns lowercase but guard anyway
     probs = {item["label"].lower(): item["score"] for item in raw}
 
-    # Ensure all expected keys are present even if model skips low-prob ones
     return {emotion: probs.get(emotion, 0.0) for emotion in EMOTIONS}
 
 
