@@ -134,7 +134,7 @@ def features_to_array(features: dict[str, float]) -> np.ndarray:
         features: Output of extract_acoustic_features().
 
     Returns:
-        1D float32 numpy array of feature values.
+        1D float32 numpy array of 86 feature values.
     """
     return np.array(
         [features[k] for k in sorted(features.keys())],
