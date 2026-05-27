@@ -37,10 +37,18 @@ class TextEmotionConfig:
     max_length: int = 512
 
 @dataclass
+class AudioEmotionConfig:
+    """Audio emotion model settings."""
+    model_name: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
+    device: str = "cuda"
+    sample_rate: int = 16000
+
+@dataclass
 class Config:
     asr: ASRConfig = field(default_factory=ASRConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     text_emotion: TextEmotionConfig = field(default_factory=TextEmotionConfig)
+    audio_emotion: AudioEmotionConfig = field(default_factory=AudioEmotionConfig)
 
 # Single importable instance
 cfg = Config()

@@ -6,22 +6,18 @@ Why we extract these features:
     produce completely different audio signals. These features capture
     that signal mathematically:
 
-    MFCC (Mel Frequency Cepstral Coefficients)
-        Represents the shape of the vocal tract — essentially a fingerprint
-        of how someone is producing sound. Angry speech has a different MFCC
-        profile than calm speech even if the words are identical.
+    MFCC (Mel Frequency Cepstral Coefficients) 
+        Represents the shape of the vocal tract
 
     Pitch (Fundamental Frequency / F0)
-        How high or low the voice is. Angry and fearful speech tends to have
-        higher, more variable pitch. Sad speech tends to be flatter and lower.
+        How high or low the voice is.
 
     RMS Energy
         Loudness over time. Anger and joy tend to be louder. Sadness quieter.
 
     Zero Crossing Rate (ZCR)
         How often the signal crosses zero — related to how "noisy" or
-        "voiced" the sound is. Higher in fricatives and unvoiced speech.
-
+        "voiced" the sound is.
 These four together form a feature vector that captures prosody — the
 rhythm, stress, and intonation of speech — which is largely invisible
 to text-based models.
