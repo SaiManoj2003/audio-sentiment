@@ -44,11 +44,22 @@ class AudioEmotionConfig:
     sample_rate: int = 16000
 
 @dataclass
+class FusionConfig:
+    """Late-fusion weighting between text and audio branches."""
+    text_weight: float = 0.5
+    audio_weight: float = 0.5        # must sum to 1.0
+
+    def __post_init__(self):
+        assert abs(self.text_weight + self.audio_weight - 1.0) < 1e-6, \
+            "text_weight + audio_weight must equal 1.0"
+
+@dataclass
 class Config:
     asr: ASRConfig = field(default_factory=ASRConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     text_emotion: TextEmotionConfig = field(default_factory=TextEmotionConfig)
     audio_emotion: AudioEmotionConfig = field(default_factory=AudioEmotionConfig)
+    fusion: FusionConfig = field(default_factory=FusionConfig)
 
 # Single importable instance
 cfg = Config()
