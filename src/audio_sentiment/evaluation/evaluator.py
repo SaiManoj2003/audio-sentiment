@@ -28,8 +28,7 @@ import numpy as np
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
-    confusion_matrix,
-    weighted_f1_score,
+    f1_score,
 )
 
 from audio_sentiment.asr.audio_loader import load_audio
@@ -93,6 +92,12 @@ def evaluate_sample(
         fused_probs = fuse_emotions(text_probs, audio_probs)
         fusion_pred = dominant_emotion(fused_probs)
 
+        # CRITICAL DEBUG CODE: Add these print lines right here!
+        print(f"\n>>> DEBUG FOR FILE: {sample.file_path.name} (True Label: {sample.emotion})")
+        print(f"Text Probs:  {text_probs} -> Pred: {text_pred}")
+        print(f"Audio Probs: {audio_probs} -> Pred: {audio_pred}")
+        print(f"Fused Probs: {fused_probs} -> Pred: {fusion_pred}\n" + "-"*40)
+
         return {
             "file": sample.file_path.name,
             "true_label": sample.emotion,
@@ -116,7 +121,7 @@ def compute_metrics(
 ) -> dict:
     """Compute and log accuracy + weighted F1 for one approach."""
     accuracy = accuracy_score(true_labels, predicted_labels)
-    f1 = weighted_f1_score(true_labels, predicted_labels, average="weighted")
+    f1 = f1_score(true_labels, predicted_labels, average="weighted")
 
     report = classification_report(
         true_labels,
@@ -175,16 +180,28 @@ def run_evaluation(
         samples = [samples[i] for i in sorted(indices)]
         logger.info("Evaluating on %d samples (max_samples=%d)", len(samples), max_samples)
 
-    # ── Initialise models ─────────────────────────────────────────────────
+# ── Initialise models ─────────────────────────────────────────────────
     # Transcriber loads Whisper once — reused for all samples
     logger.info("Loading models...")
     transcriber = Transcriber()
+
+    # CRITICAL FIX: Explicitly call and pin your models to memory BEFORE the loop starts!
+    # This ensures @lru_cache stores them permanently in memory.
+    from audio_sentiment.emotion.text_emotion import _get_pipeline as get_text_pipe
+    from audio_sentiment.emotion.audio_emotion import _get_model_and_extractor as get_audio_model
+    
+    logger.info("Warm-loading and pinning Text Emotion pipeline to VRAM...")
+    get_text_pipe()
+    
+    logger.info("Warm-loading and pinning Audio Emotion model to VRAM...")
+    get_audio_model()
 
     # ── Run evaluation ────────────────────────────────────────────────────
     all_results = []
     start_time = time.perf_counter()
 
     for i, sample in enumerate(samples, start=1):
+        # Your processing loop continues safely here...
         if i % 10 == 0 or i == 1:
             elapsed = time.perf_counter() - start_time
             eta = (elapsed / i) * (len(samples) - i)

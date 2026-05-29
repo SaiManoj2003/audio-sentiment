@@ -70,11 +70,26 @@ def classify_text_emotion(text: str) -> dict[str, float]:
         return {e: (1.0 if e == "neutral" else 0.0) for e in EMOTIONS}
 
     pipe = _get_pipeline()
-    raw = pipe(text.strip())[0]  # list of {label, score} dicts
+    
+    # CRITICAL FIX 1: top_k=None inside pipeline returns a list of DICTS.
+    # But because of a known artifact in this model's config, raw values can contain 
+    # leading/trailing spaces (e.g., " anger " or " neutral"). We must strip keys.
+    raw = pipe(text.strip())[0]  
 
-    probs = {item["label"].lower(): item["score"] for item in raw}
+    # CRITICAL FIX 2: Strip whitespaces from raw output labels to prevent missing key errors
+    probs = {item["label"].strip().lower(): float(item["score"]) for item in raw}
 
-    return {emotion: probs.get(emotion, 0.0) for emotion in EMOTIONS}
+    # Safeguard validation loop: verify no float drifts or completely empty results occurred
+    final_dict = {emotion: probs.get(emotion, 0.0) for emotion in EMOTIONS}
+    
+    # Optional renormalization safeguard to guarantee it sums exactly to 1.0
+    total = sum(final_dict.values())
+    if total > 0:
+        final_dict = {k: v / total for k, v in final_dict.items()}
+    else:
+        final_dict["neutral"] = 1.0
+
+    return final_dict
 
 
 def emotion_to_valence(emotion_probs: dict[str, float]) -> float:

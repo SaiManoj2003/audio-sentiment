@@ -39,15 +39,18 @@ class TextEmotionConfig:
 @dataclass
 class AudioEmotionConfig:
     """Audio emotion model settings."""
-    model_name: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
+    model_name: str = "r-f/wav2vec-english-speech-emotion-recognition"
     device: str = "cuda"
     sample_rate: int = 16000
 
 @dataclass
 class FusionConfig:
     """Late-fusion weighting between text and audio branches."""
-    text_weight: float = 0.5
-    audio_weight: float = 0.5        # must sum to 1.0
+    text_weight: float = 0.3
+    audio_weight: float = 0.7        # must sum to 1.0
+    # Audio weighted higher because RAVDESS emotion is carried
+    # by voice tone, not word choice. For real call analysis
+    # where language matters more, adjust toward 0.5/0.5.
 
     def __post_init__(self):
         assert abs(self.text_weight + self.audio_weight - 1.0) < 1e-6, \
