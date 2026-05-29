@@ -54,12 +54,22 @@ class FusionConfig:
             "text_weight + audio_weight must equal 1.0"
 
 @dataclass
+class EvalConfig:
+    """Evaluation settings."""
+    dataset: str = "RAVDESS"
+    data_dir: Path = DATA_DIR / "ravdess"
+    results_dir: Path = ROOT_DIR / "results"
+    random_seed: int = 42
+
+@dataclass
 class Config:
     asr: ASRConfig = field(default_factory=ASRConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     text_emotion: TextEmotionConfig = field(default_factory=TextEmotionConfig)
     audio_emotion: AudioEmotionConfig = field(default_factory=AudioEmotionConfig)
     fusion: FusionConfig = field(default_factory=FusionConfig)
+    eval: EvalConfig = field(default_factory=EvalConfig)
+
 
 # Single importable instance
 cfg = Config()
