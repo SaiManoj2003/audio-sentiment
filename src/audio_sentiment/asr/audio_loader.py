@@ -15,13 +15,12 @@ from pathlib import Path
 
 import librosa
 import numpy as np
-import soundfile as sf
 
 from audio_sentiment.config import cfg
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_FORMATS = {".wav", ".mp3", ".m4a"}
+SUPPORTED_FORMATS = {".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus", ".webm"}
 
 
 def load_audio(file_path: str | Path) -> tuple[np.ndarray, int]:
@@ -77,9 +76,6 @@ def slice_waveform(
 ) -> np.ndarray:
     """
     Extract a segment from a waveform by time boundaries.
-
-    Used to slice individual sentence audio segments for per-sentence
-    audio emotion classification.
 
     Args:
         waveform:    Full audio array (mono float32).

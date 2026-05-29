@@ -88,12 +88,15 @@ class Transcriber:
             List of Sentence objects ordered by start time.
         """
         path = Path(file_path)
+
+        # Load once — waveform is passed directly to Whisper as a numpy array,
+        # avoiding a second file decode inside the CTranslate2 backend.
         waveform, sr = load_audio(path)
 
         logger.info("Transcribing: %s", path.name)
 
         segments, info = self._model.transcribe(
-            str(path),
+            waveform,               # numpy array — no second file read
             language=cfg.asr.language,
             beam_size=cfg.asr.beam_size,
             vad_filter=True,        # skip silent regions
@@ -119,7 +122,6 @@ class Transcriber:
                 sample_rate=sr,
             )
 
-            # Speaker assignment via turn detection — see module docstring
             speaker_id = self._assign_speaker(segment.start, sentences)
 
             sentences.append(Sentence(
@@ -164,8 +166,6 @@ class Transcriber:
         gap = start_time - last.end
 
         if gap >= gap_threshold:
-            # Speaker changed — flip between 0 and 1
             return 1 - last.speaker_id
 
-        # Same speaker continuing
         return last.speaker_id

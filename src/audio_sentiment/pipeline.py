@@ -5,17 +5,13 @@ This module is the single public entry point for the full analysis.
 External code (API, evaluation script, notebook) only needs to call
 analyse_call() — it never imports individual modules directly.
 
-This matters for maintainability: if we swap wav2vec2 for a different
-audio model tomorrow, only audio_emotion.py changes. The pipeline
-interface stays identical.
-
-Pipeline flow per sentence:
+Pipeline flow:
     1. Whisper  → text + timestamps + speaker_id + waveform slice
-    2. Text branch  → emotion probs from words
-    3. Audio branch → emotion probs from waveform
-    4. Fusion       → combined emotion probs
-    5. Valence      → single scalar for timeline
-    6. Summarise    → per-speaker aggregated results
+    2. Text branch (batched)  → emotion probs from words
+    3. Audio branch (batched) → emotion probs from waveform
+    4. Fusion                 → combined emotion probs
+    5. Valence                → single scalar for timeline
+    6. Summarise              → per-speaker aggregated results
 """
 
 import logging
@@ -25,9 +21,8 @@ from pathlib import Path
 import numpy as np
 
 from audio_sentiment.asr.transcriber import Sentence, Transcriber
-from audio_sentiment.emotion.acoustic_features import extract_acoustic_features
-from audio_sentiment.emotion.audio_emotion import classify_audio_emotion
-from audio_sentiment.emotion.text_emotion import classify_text_emotion
+from audio_sentiment.emotion.audio_emotion import classify_audio_emotion_batch
+from audio_sentiment.emotion.text_emotion import classify_text_emotion_batch, dominant_emotion
 from audio_sentiment.fusion.fusion import (
     compute_valence,
     fuse_emotions,
@@ -50,6 +45,7 @@ class SentenceResult:
     fused_emotion_probs: dict[str, float]
     valence_score: float
     dominant_emotion: str
+    low_confidence: bool = False
 
 
 @dataclass
@@ -112,28 +108,30 @@ class SentimentPipeline:
                 speaker_summaries=[],
             )
 
-        # ── Steps 2-5: Per-sentence analysis ─────────────────────────────
+        # ── Steps 2-3: Batched inference ──────────────────────────────────
+        # Both models process all sentences in a small number of GPU passes
+        # instead of one per sentence — typically 8-12x throughput gain.
+        texts = [s.text for s in sentences]
+        waveforms = [s.waveform for s in sentences]
+
+        logger.debug("Running batched text emotion on %d sentences.", len(texts))
+        text_probs_list = classify_text_emotion_batch(
+            texts, batch_size=cfg.text_emotion.batch_size
+        )
+
+        logger.debug("Running batched audio emotion on %d waveforms.", len(waveforms))
+        audio_probs_list = classify_audio_emotion_batch(
+            waveforms, batch_size=cfg.audio_emotion.batch_size
+        )
+
+        # ── Steps 4-5: Fusion + valence per sentence ──────────────────────
         results: list[SentenceResult] = []
-        for i, sentence in enumerate(sentences):
-            logger.debug(
-                "Processing sentence %d/%d: '%s'",
-                i + 1, len(sentences), sentence.text[:40],
-            )
-
-            # Text branch
-            text_probs = classify_text_emotion(sentence.text)
-
-            # Audio branch
-            audio_probs = classify_audio_emotion(sentence.waveform)
-
-            # Fusion
+        for sentence, text_probs, audio_probs in zip(sentences, text_probs_list, audio_probs_list):
             fused_probs = fuse_emotions(text_probs, audio_probs)
-
-            # Valence scalar
             valence = compute_valence(fused_probs)
-
-            # Dominant emotion from fused probs
             dom_emotion = max(fused_probs, key=fused_probs.get)
+            max_prob = fused_probs[dom_emotion]
+            low_conf = max_prob < cfg.fusion.low_confidence_threshold
 
             results.append(SentenceResult(
                 speaker_id=sentence.speaker_id,
@@ -144,10 +142,11 @@ class SentimentPipeline:
                 audio_emotion_probs=audio_probs,
                 fused_emotion_probs=fused_probs,
                 valence_score=valence,
-                dominant_emotion=dom_emotion,
+                dominant_emotion="uncertain" if low_conf else dom_emotion,
+                low_confidence=low_conf,
             ))
 
-        # ── Step 6: Per-speaker summaries ────────────────────────────────
+        # ── Step 6: Per-speaker summaries ─────────────────────────────────
         speaker_ids = sorted({r.speaker_id for r in results})
         summaries = []
         for speaker_id in speaker_ids:

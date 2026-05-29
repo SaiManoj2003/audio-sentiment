@@ -7,15 +7,10 @@ Runs three approaches on the same samples:
     3. Fusion      — fuse_emotions combining both branches
 
 Reports accuracy and weighted F1 for each approach.
-The delta between fusion and the two baselines is the contribution
-of the multimodal architecture — this is what goes on your resume.
 
 Usage:
     python -m audio_sentiment.evaluation.evaluator
-
-Runtime estimate on GTX 1660 Ti:
-    ~4-6 hours for all 1440 samples (Whisper + two models per sample)
-    Use --max-samples 100 for a quick sanity check first.
+    python -m audio_sentiment.evaluation.evaluator --max-samples 100
 """
 
 import argparse
@@ -44,12 +39,10 @@ from audio_sentiment.evaluation.ravdess_loader import (
     dataset_summary,
     load_ravdess,
 )
-from audio_sentiment.fusion.fusion import compute_valence, fuse_emotions
+from audio_sentiment.fusion.fusion import fuse_emotions
 
 logger = logging.getLogger(__name__)
 
-# We only evaluate on emotions our models can predict
-# RAVDESS 'calm' is mapped to 'neutral' in the loader
 EVAL_EMOTIONS = ["anger", "disgust", "fear", "joy", "neutral", "sadness", "surprise"]
 
 
@@ -60,20 +53,13 @@ def evaluate_sample(
     """
     Run all three approaches on a single RAVDESS sample.
 
-    Args:
-        sample:      A labelled RAVDESS audio file.
-        transcriber: Shared Transcriber instance (model loaded once).
-
     Returns:
         Dict with true label and predictions from each approach,
         or None if processing failed.
     """
     try:
-        # Load audio — guaranteed 16kHz mono float32
-        waveform, sr = load_audio(sample.file_path)
+        waveform, _ = load_audio(sample.file_path)
 
-        # ── Text branch ───────────────────────────────────────────────────
-        # Transcribe the full file, concatenate all text
         sentences = transcriber.transcribe(sample.file_path)
         full_text = " ".join(s.text for s in sentences).strip()
 
@@ -84,19 +70,11 @@ def evaluate_sample(
         text_probs = classify_text_emotion(full_text)
         text_pred = dominant_emotion(text_probs)
 
-        # ── Audio branch ──────────────────────────────────────────────────
         audio_probs = classify_audio_emotion(waveform)
         audio_pred = dominant_emotion(audio_probs)
 
-        # ── Fusion ────────────────────────────────────────────────────────
         fused_probs = fuse_emotions(text_probs, audio_probs)
         fusion_pred = dominant_emotion(fused_probs)
-
-        # CRITICAL DEBUG CODE: Add these print lines right here!
-        print(f"\n>>> DEBUG FOR FILE: {sample.file_path.name} (True Label: {sample.emotion})")
-        print(f"Text Probs:  {text_probs} -> Pred: {text_pred}")
-        print(f"Audio Probs: {audio_probs} -> Pred: {audio_pred}")
-        print(f"Fused Probs: {fused_probs} -> Pred: {fusion_pred}\n" + "-"*40)
 
         return {
             "file": sample.file_path.name,
@@ -121,7 +99,7 @@ def compute_metrics(
 ) -> dict:
     """Compute and log accuracy + weighted F1 for one approach."""
     accuracy = accuracy_score(true_labels, predicted_labels)
-    f1 = f1_score(true_labels, predicted_labels, average="weighted")
+    f1 = f1_score(true_labels, predicted_labels, average="weighted", zero_division=0)
 
     report = classification_report(
         true_labels,
@@ -155,18 +133,14 @@ def run_evaluation(
 
     Args:
         max_samples: Cap number of samples — useful for quick testing.
-                     None means evaluate all 1440.
         results_dir: Where to save JSON results.
-                     Defaults to cfg.eval.results_dir.
 
     Returns:
         Dict containing metrics for all three approaches.
     """
-    results_dir = results_dir or cfg.eval.results_dir
-    results_dir = Path(results_dir)
+    results_dir = Path(results_dir or cfg.eval.results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    # ── Load dataset ──────────────────────────────────────────────────────
     logger.info("Loading RAVDESS dataset...")
     samples = load_ravdess()
 
@@ -174,34 +148,24 @@ def run_evaluation(
     logger.info("Dataset summary: %s", json.dumps(summary, indent=2))
 
     if max_samples:
-        # Use a fixed seed for reproducibility
         rng = np.random.default_rng(cfg.eval.random_seed)
         indices = rng.choice(len(samples), size=min(max_samples, len(samples)), replace=False)
         samples = [samples[i] for i in sorted(indices)]
         logger.info("Evaluating on %d samples (max_samples=%d)", len(samples), max_samples)
 
-# ── Initialise models ─────────────────────────────────────────────────
-    # Transcriber loads Whisper once — reused for all samples
     logger.info("Loading models...")
     transcriber = Transcriber()
 
-    # CRITICAL FIX: Explicitly call and pin your models to memory BEFORE the loop starts!
-    # This ensures @lru_cache stores them permanently in memory.
-    from audio_sentiment.emotion.text_emotion import _get_pipeline as get_text_pipe
-    from audio_sentiment.emotion.audio_emotion import _get_model_and_extractor as get_audio_model
-    
-    logger.info("Warm-loading and pinning Text Emotion pipeline to VRAM...")
-    get_text_pipe()
-    
-    logger.info("Warm-loading and pinning Audio Emotion model to VRAM...")
-    get_audio_model()
+    # Warm-load both models into cache before the evaluation loop
+    from audio_sentiment.emotion.text_emotion import _get_pipeline
+    from audio_sentiment.emotion.audio_emotion import _get_model_and_extractor
+    _get_pipeline()
+    _get_model_and_extractor()
 
-    # ── Run evaluation ────────────────────────────────────────────────────
     all_results = []
     start_time = time.perf_counter()
 
     for i, sample in enumerate(samples, start=1):
-        # Your processing loop continues safely here...
         if i % 10 == 0 or i == 1:
             elapsed = time.perf_counter() - start_time
             eta = (elapsed / i) * (len(samples) - i)
@@ -219,7 +183,6 @@ def run_evaluation(
         len(all_results), len(samples),
     )
 
-    # ── Compute metrics per approach ──────────────────────────────────────
     true_labels = [r["true_label"] for r in all_results]
     text_preds = [r["text_pred"] for r in all_results]
     audio_preds = [r["audio_pred"] for r in all_results]
@@ -229,7 +192,6 @@ def run_evaluation(
     audio_metrics = compute_metrics(true_labels, audio_preds, "audio_only")
     fusion_metrics = compute_metrics(true_labels, fusion_preds, "fusion")
 
-    # ── Save results ──────────────────────────────────────────────────────
     output = {
         "dataset": "RAVDESS",
         "total_samples_evaluated": len(all_results),
@@ -252,28 +214,21 @@ def run_evaluation(
 
     logger.info("Results saved to %s", out_path)
 
-    # ── Print summary table ───────────────────────────────────────────────
-    print("\n" + "="*55)
+    print("\n" + "=" * 55)
     print("  RAVDESS EVALUATION SUMMARY")
-    print("="*55)
+    print("=" * 55)
     print(f"  {'Approach':<20} {'Accuracy':>10} {'Weighted F1':>12}")
-    print("-"*55)
+    print("-" * 55)
     for metrics in [text_metrics, audio_metrics, fusion_metrics]:
         print(
             f"  {metrics['approach']:<20} "
             f"{metrics['accuracy']:>9.1%} "
             f"{metrics['weighted_f1']:>11.4f}"
         )
-    print("="*55)
-    print(
-        f"  Fusion vs text-only:  "
-        f"{output['improvement_over_text']:+.1%}"
-    )
-    print(
-        f"  Fusion vs audio-only: "
-        f"{output['improvement_over_audio']:+.1%}"
-    )
-    print("="*55 + "\n")
+    print("=" * 55)
+    print(f"  Fusion vs text-only:  {output['improvement_over_text']:+.1%}")
+    print(f"  Fusion vs audio-only: {output['improvement_over_audio']:+.1%}")
+    print("=" * 55 + "\n")
 
     return output
 
