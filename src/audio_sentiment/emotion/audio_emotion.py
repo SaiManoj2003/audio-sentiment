@@ -64,10 +64,16 @@ class _SERModel(nn.Module):
         """Mean-pool over time, respecting padding when attention_mask is provided."""
         if attention_mask is None:
             return hidden.mean(dim=1)
-        mask = attention_mask.unsqueeze(-1).float()
+        input_lengths=attention_mask.sum(dim=-1).long()
+        output_lengths=self.wav2vec2._get_feat_extract_output_lengths(input_lengths)
+        T = hidden.shape[1]
+        indices = torch.arange(T,device=hidden.device).unsqueeze(0)
+        mask = (indices<output_lengths.unsqueeze(1)).unsqueeze(-1).float()
         return (hidden * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1e-9)
 
-    def forward(self, input_values: torch.Tensor, attention_mask: torch.Tensor | None = None):
+    def forward(self, input_values: torch.Tensor, attention_mask: torch.Tensor | None = None, **kwargs):
+        if not isinstance(input_values, torch.Tensor):
+            input_values = torch.as_tensor(np.array(input_values, dtype=np.float32))
         outputs = self.wav2vec2(input_values, attention_mask=attention_mask)
         pooled = self._mean_pool(outputs.last_hidden_state, attention_mask)
         hidden = torch.tanh(self.dense(pooled))

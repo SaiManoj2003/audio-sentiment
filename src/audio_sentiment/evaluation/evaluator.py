@@ -58,9 +58,9 @@ def evaluate_sample(
         or None if processing failed.
     """
     try:
-        waveform, _ = load_audio(sample.file_path)
+        waveform, sr = load_audio(sample.file_path)
 
-        sentences = transcriber.transcribe(sample.file_path)
+        sentences = transcriber.transcribe(sample.file_path, waveform=waveform, sr=sr)
         full_text = " ".join(s.text for s in sentences).strip()
 
         if not full_text:

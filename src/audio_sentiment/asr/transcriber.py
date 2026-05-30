@@ -77,7 +77,12 @@ class Transcriber:
         )
         logger.info("Whisper model loaded.")
 
-    def transcribe(self, file_path: str | Path) -> list[Sentence]:
+    def transcribe(
+            self, 
+            file_path: str | Path,
+            waveform: np.ndarray | None = None,
+            sr: int | None = None,
+        ) -> list[Sentence]:
         """
         Transcribe an audio file and return a list of Sentence objects.
 
@@ -89,9 +94,10 @@ class Transcriber:
         """
         path = Path(file_path)
 
-        # Load once — waveform is passed directly to Whisper as a numpy array,
-        # avoiding a second file decode inside the CTranslate2 backend.
-        waveform, sr = load_audio(path)
+        if waveform is None:
+            # Load once — waveform is passed directly to Whisper as a numpy array,
+            # avoiding a second file decode inside the CTranslate2 backend.
+            waveform, sr = load_audio(path)
 
         logger.info("Transcribing: %s", path.name)
 

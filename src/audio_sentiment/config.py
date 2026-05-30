@@ -43,7 +43,7 @@ class TextEmotionConfig:
 @dataclass
 class AudioEmotionConfig:
     """Audio emotion model settings."""
-    model_name: str = "r-f/wav2vec-english-speech-emotion-recognition"
+    model_name: str = "ehcalabres/wav2vec2-lg-xlsr-en-speech-emotion-recognition"
     device: str = "cuda"
     sample_rate: int = 16000
     batch_size: int = 8
